@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     git \
     unzip \
     zip \
+    libpq-dev \
     libzip-dev \
     libpng-dev \
     libonig-dev \
@@ -17,6 +18,7 @@ RUN apt-get update && apt-get install -y \
     mbstring \
     pdo \
     pdo_mysql \
+    pdo_pgsql \
     zip \
     && a2enmod rewrite \
     && sed -ri -e 's!/var/www/html!/var/www/html/public!g' /etc/apache2/sites-available/000-default.conf \
@@ -29,4 +31,3 @@ COPY . .
 RUN composer install --no-dev --optimize-autoloader --no-interaction \
     && mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache \
     && chown -R www-data:www-data storage bootstrap/cache
-

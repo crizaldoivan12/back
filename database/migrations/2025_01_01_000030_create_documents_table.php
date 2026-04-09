@@ -15,8 +15,8 @@ return new class extends Migration {
             $table->foreignId('encoded_by_id')->constrained('users');
             $table->string('type_of_document');
 
-            // Auto-generated, non-editable, indexed document code (CH-YYYY-DEPT-XXXX)
-            $table->string('document_code')->unique()->index();
+            // Auto-generated, non-editable document code (CH-YYYY-DEPT-XXXX)
+            $table->string('document_code')->unique();
 
             $table->string('document_number')->nullable();
             $table->string('pay_claimant');
@@ -40,4 +40,3 @@ return new class extends Migration {
         Schema::dropIfExists('documents');
     }
 };
-

@@ -22,6 +22,11 @@ class Department extends Model
         return $this->hasMany(Document::class, 'routed_department_id');
     }
 
+    public function receivedDocuments()
+    {
+        return $this->hasMany(Document::class, 'department_in_id');
+    }
+
     public function routingHistoryFrom()
     {
         return $this->hasMany(DocumentRoutingHistory::class, 'from_department_id');

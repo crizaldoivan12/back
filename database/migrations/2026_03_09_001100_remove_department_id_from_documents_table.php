@@ -25,7 +25,7 @@ return new class extends Migration {
                     date DATE NOT NULL,
                     encoded_by_id INTEGER NOT NULL,
                     type_of_document VARCHAR NOT NULL,
-                    document_code VARCHAR NOT NULL UNIQUE,
+                    document_code VARCHAR NOT NULL,
                     document_number VARCHAR,
                     pay_claimant VARCHAR NOT NULL,
                     particular TEXT NOT NULL,
@@ -41,8 +41,7 @@ return new class extends Migration {
                     updated_at TIMESTAMP,
                     deleted_at TIMESTAMP,
                     FOREIGN KEY(encoded_by_id) REFERENCES users(id),
-                    FOREIGN KEY(routed_department_id) REFERENCES departments(id),
-                    UNIQUE(document_number)
+                    FOREIGN KEY(routed_department_id) REFERENCES departments(id)
                 )
             ');
             
@@ -63,6 +62,8 @@ return new class extends Migration {
             // Drop old table and rename
             DB::statement('DROP TABLE documents');
             DB::statement('ALTER TABLE documents_new RENAME TO documents');
+            DB::statement('CREATE UNIQUE INDEX documents_document_code_unique ON documents (document_code)');
+            DB::statement('CREATE UNIQUE INDEX documents_document_number_unique ON documents (document_number)');
             
         } catch (\Exception $e) {
             DB::statement('DROP TABLE IF EXISTS documents_new');

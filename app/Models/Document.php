@@ -22,6 +22,7 @@ class Document extends Model
         'reason',
         'particular',
         'amount',
+        'department_in_id',
         'routed_department_id',
         'status',
         'remarks',
@@ -47,6 +48,11 @@ class Document extends Model
     public function routedDepartment()
     {
         return $this->belongsTo(Department::class, 'routed_department_id');
+    }
+
+    public function departmentIn()
+    {
+        return $this->belongsTo(Department::class, 'department_in_id');
     }
 
     public function routingHistories()

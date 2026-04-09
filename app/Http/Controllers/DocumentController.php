@@ -37,7 +37,7 @@ class DocumentController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Document::with(['routedDepartment', 'encodedBy'])->orderByDesc('created_at');
+        $query = Document::with(['departmentIn', 'routedDepartment', 'encodedBy'])->orderByDesc('created_at');
         $user = $request->user();
 
         if ($code = $request->get('code')) {
@@ -56,6 +56,9 @@ class DocumentController extends Controller
                         ->orWhere('particular', 'like', $like)
                         ->orWhere('remarks', 'like', $like)
                         ->orWhere('status', 'like', $like)
+                        ->orWhereHas('departmentIn', function ($dq) use ($like) {
+                            $dq->where('name', 'like', $like)->orWhere('code', 'like', $like);
+                        })
                         ->orWhereHas('routedDepartment', function ($dq) use ($like) {
                             $dq->where('name', 'like', $like)->orWhere('code', 'like', $like);
                         })
@@ -153,6 +156,9 @@ class DocumentController extends Controller
         $this->authorizeRole($request, ['Admin', 'Encoder']);
 
         $validated = $this->validateDocument($request);
+        if (! Schema::hasColumn('documents', 'department_in_id')) {
+            unset($validated['department_in_id']);
+        }
         if (! Schema::hasColumn('documents', 'routed_department_id')) {
             unset($validated['routed_department_id']);
         }
@@ -216,7 +222,7 @@ class DocumentController extends Controller
     public function show(Request $request, Document $document)
     {
         // All authenticated users can view any document details.
-        $document->load(['routedDepartment', 'encodedBy']);
+        $document->load(['departmentIn', 'routedDepartment', 'encodedBy']);
         $now = now();
         $isInactive = $this->isDocumentInactive($document, $now);
         $document->setAttribute('is_inactive', $isInactive);
@@ -319,13 +325,25 @@ class DocumentController extends Controller
 
     private function getDepartmentNameFromPayload(array $payload): ?string
     {
-        $departmentId = $payload['routed_department_id'] ?? $payload['department_id'] ?? null;
-        if ($departmentId === null) {
-            return null;
-        }
-        $department = Department::find($departmentId);
+        $parts = [];
 
-        return $department ? $department->name : null;
+        $departmentInId = $payload['department_in_id'] ?? null;
+        if ($departmentInId !== null) {
+            $departmentIn = Department::find($departmentInId);
+            if ($departmentIn) {
+                $parts[] = 'Department In: ' . $departmentIn->name;
+            }
+        }
+
+        $departmentOutId = $payload['routed_department_id'] ?? $payload['department_id'] ?? null;
+        if ($departmentOutId !== null) {
+            $departmentOut = Department::find($departmentOutId);
+            if ($departmentOut) {
+                $parts[] = 'Department Out: ' . $departmentOut->name;
+            }
+        }
+
+        return empty($parts) ? null : implode(' | ', $parts);
     }
 
     private function getRemarksFromPayload(array $payload): ?string
@@ -416,6 +434,9 @@ class DocumentController extends Controller
         }
 
         $validated = $this->validateDocument($request, $document->id);
+        if (! Schema::hasColumn('documents', 'department_in_id')) {
+            unset($validated['department_in_id']);
+        }
         if (! Schema::hasColumn('documents', 'routed_department_id')) {
             unset($validated['routed_department_id']);
         }
@@ -791,7 +812,7 @@ class DocumentController extends Controller
     {
         $limit = (int) $request->get('limit', 10);
 
-        $query = Document::with(['routedDepartment', 'encodedBy'])
+        $query = Document::with(['departmentIn', 'routedDepartment', 'encodedBy'])
             ->orderByDesc('created_at');
         if ($limit > 0) {
             $query->limit($limit);
@@ -1011,8 +1032,7 @@ class DocumentController extends Controller
      */
     public function exportExcel(Request $request)
     {
-        // Allow any authenticated role; access is already restricted via Sanctum.
-        $this->authorizeRole($request, ['Admin', 'Encoder', 'Viewer']);
+        $this->authorizeRole($request, ['Admin']);
 
         try {
             if (! class_exists(\OpenSpout\Writer\XLSX\Writer::class)) {
@@ -1096,12 +1116,12 @@ class DocumentController extends Controller
 
             $writer->close();
 
-            return response()->streamDownload(
+            return response()->stream(
                 static function () use ($tmpPath) {
                     readfile($tmpPath);
                     @unlink($tmpPath);
                 },
-                'report.xlsx',
+                200,
                 $headers
             );
         } catch (\Throwable $e) {
@@ -1120,8 +1140,7 @@ class DocumentController extends Controller
      */
     public function exportPdf(Request $request)
     {
-        // Allow any authenticated role; access is already restricted via Sanctum.
-        $this->authorizeRole($request, ['Admin', 'Encoder', 'Viewer']);
+        $this->authorizeRole($request, ['Admin']);
 
         try {
             if (! class_exists(\Dompdf\Dompdf::class)) {
@@ -1158,11 +1177,11 @@ class DocumentController extends Controller
                 'generated_by_id' => $request->user()?->id,
             ]);
 
-            return response()->streamDownload(
+            return response()->stream(
                 static function () use ($pdf) {
                     echo $pdf->output();
                 },
-                'report.pdf',
+                200,
                 [
                     'Content-Type' => 'application/pdf',
                     'Content-Disposition' => 'attachment; filename="report.pdf"',
@@ -1185,8 +1204,10 @@ class DocumentController extends Controller
     protected function buildExportQuery(Request $request)
     {
         $hasRouted = Schema::hasColumn('documents', 'routed_department_id');
+        $hasDepartmentIn = Schema::hasColumn('documents', 'department_in_id');
 
         $query = DB::table('documents')
+            ->leftJoin('departments as department_in_departments', 'documents.department_in_id', '=', 'department_in_departments.id')
             ->leftJoin('departments as routed_departments', 'documents.routed_department_id', '=', 'routed_departments.id')
             ->leftJoin('users as encoders', 'documents.encoded_by_id', '=', 'encoders.id');
 
@@ -1200,6 +1221,8 @@ class DocumentController extends Controller
             'documents.pay_claimant',
             'documents.particular',
             'documents.amount',
+            'department_in_departments.name as department_in_name',
+            'department_in_departments.code as department_in_code',
             'routed_departments.name as department_out_name',
             'routed_departments.code as department_out_code',
             'documents.status',
@@ -1228,6 +1251,8 @@ class DocumentController extends Controller
                         ->orWhere('documents.particular', 'like', $like)
                         ->orWhere('documents.remarks', 'like', $like)
                         ->orWhere('documents.status', 'like', $like)
+                        ->orWhere('department_in_departments.name', 'like', $like)
+                        ->orWhere('department_in_departments.code', 'like', $like)
                         ->orWhere('routed_departments.name', 'like', $like)
                         ->orWhere('routed_departments.code', 'like', $like)
                         ->orWhere('encoders.name', 'like', $like);
@@ -1321,6 +1346,7 @@ class DocumentController extends Controller
             'created_date' => $request->get('created_date'),
             'created_month' => $request->get('created_month'),
             'search' => $request->get('search'),
+            'department_in_id' => $request->get('department_in_id'),
             'routed_department_id' => $request->get('routed_department_id') ?? $request->get('department_id'),
             'status' => $request->get('status'),
             'status_groups' => $request->input('status_groups', []),
@@ -1366,6 +1392,7 @@ class DocumentController extends Controller
             'pay_claimant' => 'Pay Claimant',
             'particular' => 'Particular',
             'amount' => 'Amount',
+            'department_in_name' => 'Department In',
             'department_out_name' => 'Department Out',
             'status' => 'Status',
             'remarks' => 'Remarks',
@@ -1397,14 +1424,12 @@ class DocumentController extends Controller
             (string) ($row->pay_claimant ?? ''),
             (string) ($row->particular ?? ''),
             $amount,
-            (string) ($row->department_name ?? ''),
+            (string) ($row->department_in_name ?? ''),
+            (string) ($row->department_out_name ?? ''),
             (string) ($row->status ?? ''),
             (string) ($row->remarks ?? ''),
             $dateOut,
         ];
-        if (Schema::hasColumn('documents', 'routed_department_id')) {
-            array_splice($values, 9, 0, (string) ($row->routed_department_name ?? ''));
-        }
         return $values;
     }
 
@@ -1443,6 +1468,12 @@ class DocumentController extends Controller
             $rules['routed_department_id'] = ['nullable'];
         }
 
+        if (Schema::hasColumn('documents', 'department_in_id')) {
+            $rules['department_in_id'] = ['required', 'exists:departments,id'];
+        } else {
+            $rules['department_in_id'] = ['nullable'];
+        }
+
         if ($requirements['document_number'] ?? false) {
             $rules['document_number'][] = 'required';
         }
@@ -1463,9 +1494,6 @@ class DocumentController extends Controller
         }
         if ($requirements['amount'] ?? false) {
             $rules['amount'][] = 'required';
-            if (($requirements['amount_min'] ?? 0) > 0) {
-                $rules['amount'][] = 'min:' . (string) $requirements['amount_min'];
-            }
         }
 
         return $request->validate($rules);
@@ -1486,37 +1514,31 @@ class DocumentController extends Controller
             'PURCHASE REQUEST' => [
                 'document_number' => true,
                 'amount' => true,
-                'amount_min' => 1000000,
             ],
             'PURCHASE ORDER' => [
                 'document_number' => true,
                 'amount' => true,
-                'amount_min' => 1000000,
             ],
             'PO ATTACHMENTS' => [
                 'amount' => true,
-                'amount_min' => 1000000,
             ],
             'OBR' => [
                 'pay_claimant' => true,
                 'document_number' => true,
                 'particular' => true,
                 'amount' => true,
-                'amount_min' => 1000000,
             ],
             'VOUCHER' => [
                 'pay_claimant' => true,
                 'document_number' => true,
                 'particular' => true,
                 'amount' => true,
-                'amount_min' => 1000000,
             ],
             'CHEQUE' => [
                 'pay_claimant' => true,
                 'document_number' => true,
                 'particular' => true,
                 'amount' => true,
-                'amount_min' => 1000000,
             ],
             'MOA' => [
                 'particular' => true,

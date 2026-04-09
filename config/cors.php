@@ -1,5 +1,22 @@
 <?php
 
+$allowedOrigins = array_values(array_filter(array_map(
+    'trim',
+    array_merge(
+        [
+            'http://localhost:3000',
+            'http://127.0.0.1:3000',
+        ],
+        explode(',', (string) env('FRONTEND_URL', 'http://localhost:3000')),
+        explode(',', (string) env('ADDITIONAL_FRONTEND_URLS', ''))
+    )
+)));
+
+$allowedOriginPatterns = array_values(array_filter(array_map(
+    'trim',
+    explode(',', (string) env('CORS_ALLOWED_ORIGINS_PATTERNS', ''))
+)));
+
 return [
 
     /*
@@ -19,13 +36,9 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => [
-        'http://localhost:3000',
-        'http://127.0.0.1:3000',
-        env('FRONTEND_URL', 'http://localhost:3000'),
-    ],
+    'allowed_origins' => $allowedOrigins,
 
-    'allowed_origins_patterns' => [],
+    'allowed_origins_patterns' => $allowedOriginPatterns,
 
     'allowed_headers' => ['*'],
 

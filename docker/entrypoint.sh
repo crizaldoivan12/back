@@ -43,8 +43,17 @@ if [ "${RUN_MIGRATIONS_ON_STARTUP:-true}" = "true" ] && [ -f artisan ]; then
   if [ "${DB_REACHABLE:-unknown}" = "false" ]; then
     echo "Skipping migrations because the database is not reachable."
   else
-  echo "Running database migrations..."
+    echo "Running database migrations..."
     php artisan migrate --force
+  fi
+fi
+
+if [ "${RUN_SEEDERS_ON_STARTUP:-true}" = "true" ] && [ -f artisan ]; then
+  if [ "${DB_REACHABLE:-unknown}" = "false" ]; then
+    echo "Skipping seeders because the database is not reachable."
+  else
+    echo "Running database seeders..."
+    php artisan db:seed --force
   fi
 fi
 

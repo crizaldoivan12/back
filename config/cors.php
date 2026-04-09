@@ -6,6 +6,8 @@ $allowedOrigins = array_values(array_filter(array_map(
         [
             'http://localhost:3000',
             'http://127.0.0.1:3000',
+            'https://frontiiiiii-r7xw5nbno-dummy12s-projects.vercel.app/',
+            'https://backiii.onrender.com',
         ],
         explode(',', (string) env('FRONTEND_URL', 'http://localhost:3000')),
         explode(',', (string) env('ADDITIONAL_FRONTEND_URLS', ''))
